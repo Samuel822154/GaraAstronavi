@@ -21,68 +21,104 @@ public class GestoreFile {
             return false;
         }
 
+        RisultatoGara risultato = new RisultatoGara(
+                percorso.getNomePercorso(),
+                percorso.getLunghezzaTotale()
+        );
+
+        for (int i = 0; i < classifica.size(); i++) {
+            Astronave a = classifica.get(i);
+            risultato.aggiungiAstronave(i + 1, a.getNome(), a.getDistanzaPercorsa());
+        }
+
         String timestamp = LocalDateTime.now().format(FORMATO_DATA);
         String nomeFile = DIRECTORY_CLASSIFICHE + "/classifica_" +
                 percorso.getNomePercorso().replaceAll(" ", "_") +
-                "_" + timestamp + ".txt";
+                "_" + timestamp + ".json";
 
+        return salvaJSON(risultato, nomeFile);
+    }
+
+    public boolean salvaJSON(RisultatoGara risultato, String nomeFile) {
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(nomeFile))) {
-            writer.write("==============================================\n");
-            writer.write("    CLASSIFICA GARA ASTRONAVI\n");
-            writer.write("==============================================\n");
-            writer.write("Percorso: " + percorso.getNomePercorso() + "\n");
-            writer.write("Lunghezza: " + percorso.getLunghezzaTotale() + " metri\n");
-            writer.write("Data e ora: " + LocalDateTime.now().format(
-                    DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss")) + "\n");
-            writer.write("==============================================\n\n");
-
-            writer.write("POSIZIONE | ASTRONAVE      | DISTANZA FINALE\n");
-            writer.write("----------------------------------------------\n");
-
-            for (int i = 0; i < classifica.size(); i++) {
-                Astronave a = classifica.get(i);
-                String posizione = String.format("%-9d", (i + 1));
-                String nome = String.format("%-14s", a.getNome());
-                String distanza = String.format("%d/%d m",
-                        a.getDistanzaPercorsa(),
-                        percorso.getLunghezzaTotale());
-
-                writer.write(posizione + " | " + nome + " | " + distanza + "\n");
-            }
-
-            writer.write("----------------------------------------------\n");
-            writer.write("\nVincitore: " + classifica.get(0).getNome() + "\n");
-
+            String json = convertiInJSON(risultato);
+            writer.write(json);
             System.out.println("\n✓ Classifica salvata con successo in: " + nomeFile);
             return true;
-
         } catch (IOException e) {
-            System.err.println("Errore durante il salvataggio della classifica: " + e.getMessage());
+            System.err.println("Errore durante il salvataggio: " + e.getMessage());
             return false;
         }
     }
 
-    public boolean salvaLogDettagliato(List<String> eventi, Percorso percorso) {
-        String timestamp = LocalDateTime.now().format(FORMATO_DATA);
-        String nomeFile = DIRECTORY_CLASSIFICHE + "/log_" +
-                percorso.getNomePercorso().replaceAll(" ", "_") +
-                "_" + timestamp + ".txt";
-
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(nomeFile))) {
-            writer.write("LOG DETTAGLIATO GARA\n");
-            writer.write("Percorso: " + percorso.getNomePercorso() + "\n");
-            writer.write("==============================================\n\n");
-
-            for (String evento : eventi) {
-                writer.write(evento + "\n");
+    public RisultatoGara leggiJSON(String nomeFile) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(nomeFile))) {
+            StringBuilder json = new StringBuilder();
+            String linea;
+            while ((linea = reader.readLine()) != null) {
+                json.append(linea);
             }
-
-            System.out.println("✓ Log dettagliato salvato in: " + nomeFile);
-            return true;
-
+            return convertiDaJSON(json.toString());
         } catch (IOException e) {
-            System.err.println("Errore durante il salvataggio del log: " + e.getMessage());
-            return false;
+            System.err.println("Errore durante la lettura: " + e.getMessage());
+            return null;
         }
+    }
+
+    private String convertiInJSON(RisultatoGara risultato) {
+        StringBuilder json = new StringBuilder();
+        json.append("{\n");
+        json.append("  \"percorso\": \"").append(risultato.getPercorso()).append("\",\n");
+        json.append("  \"lunghezzaPercorso\": ").append(risultato.getLunghezzaPercorso()).append(",\n");
+        json.append("  \"dataOra\": \"").append(risultato.getDataOra()).append("\",\n");
+        json.append("  \"classifica\": [\n");
+
+        List<RisultatoGara.ClassificaEntry> classifica = risultato.getClassifica();
+        for (int i = 0; i < classifica.size(); i++) {
+            RisultatoGara.ClassificaEntry entry = classifica.get(i);
+            json.append("    {\n");
+            json.append("      \"posizione\": ").append(entry.getPosizione()).append(",\n");
+            json.append("      \"nomeAstronave\": \"").append(entry.getNomeAstronave()).append("\",\n");
+            json.append("      \"distanzaFinale\": ").append(entry.getDistanzaFinale()).append("\n");
+            json.append("    }");
+            if (i < classifica.size() - 1) {
+                json.append(",");
+            }
+            json.append("\n");
+        }
+
+        json.append("  ]\n");
+        json.append("}");
+        return json.toString();
+    }
+
+    private RisultatoGara convertiDaJSON(String json) {
+        RisultatoGara risultato = new RisultatoGara();
+
+        // Parsing semplice (per una versione più robusta usare una libreria come Gson o Jackson)
+        risultato.setPercorso(estraiValore(json, "percorso"));
+        risultato.setLunghezzaPercorso(Integer.parseInt(estraiValoreNumerico(json, "lunghezzaPercorso")));
+        risultato.setDataOra(estraiValore(json, "dataOra"));
+
+        // Parsing classifica (semplificato)
+        String classificaStr = json.substring(json.indexOf("\"classifica\":"));
+        // Per semplicità, qui dovresti implementare il parsing completo dell'array
+
+        return risultato;
+    }
+
+    private String estraiValore(String json, String chiave) {
+        String pattern = "\"" + chiave + "\": \"";
+        int start = json.indexOf(pattern) + pattern.length();
+        int end = json.indexOf("\"", start);
+        return json.substring(start, end);
+    }
+
+    private String estraiValoreNumerico(String json, String chiave) {
+        String pattern = "\"" + chiave + "\": ";
+        int start = json.indexOf(pattern) + pattern.length();
+        int end = json.indexOf(",", start);
+        if (end == -1) end = json.indexOf("\n", start);
+        return json.substring(start, end).trim();
     }
 }
